@@ -1,0 +1,125 @@
+plugins {
+    id 'java'
+    id 'application'
+    id 'java-gradle-plugin'
+    id("org.springframework.boot") version "3.1.5"
+}
+
+group = 'com.hf'
+version = '1.0-SNAPSHOT'
+
+repositories {
+    mavenCentral()
+}
+
+application {
+    mainClass = 'com.hf.Main'
+}
+
+
+dependencies {
+    testImplementation platform('org.junit:junit-bom:5.9.1')
+    testImplementation 'org.junit.jupiter:junit-jupiter'
+}
+
+test {
+    useJUnitPlatform()
+}
+
+
+/*-----------------------Demo Plugin------------------------------
+*
+* Ref: https://docs.gradle.org/current/userguide/custom_plugins.html
+*
+* Despite plugin can be specified directly on the project itself,
+* however this is not ideal as the plugin itself can't be publish,
+* also maintenance will be an issue.
+* */
+
+// Plugin - Definition
+//Plug-in can be part of the build.gradle, if it's just a few liner.
+class GreetingPlugin implements Plugin<Project> {
+    void apply(Project project) {
+        project.task('hello') {
+            doLast {
+                println 'Hello from the GreetingPlugin'
+            }
+        }
+    }
+}
+
+// Plugin - Apply
+apply plugin: GreetingPlugin
+
+
+/*-----------------------Demo Plugin with parameters------------------------*/
+interface GreetingPluginExtension {
+    Property<String> getMessage()
+    Property<String> getGreeter()
+}
+
+class CustomGreetingPlugin implements Plugin<Project> {
+    void apply(Project project) {
+        def extension = project.extensions.create('greeting', GreetingPluginExtension)
+        project.task('helloWithName') {
+            doLast {
+                println "${extension.message.get()} from ${extension.greeter.get()}"
+            }
+        }
+    }
+}
+
+apply plugin: CustomGreetingPlugin
+
+// Configure the extension using a DSL block
+greeting {
+    message = 'Hi'
+    greeter = 'HF'
+}
+
+// ------------------------ Interact with File IO -------------------
+
+/**
+ * Concrete task to write text `Hello` into target directory,
+ * so later on the next task can pick up the text and print it
+ * on the screen.
+ *
+ */
+abstract class GreetingToFileTask extends DefaultTask {
+
+    @OutputFile
+    abstract RegularFileProperty getDestination()
+
+    @TaskAction
+    def greet() {
+        def file = getDestination().get().asFile
+        file.parentFile.mkdirs()
+        file.write 'Hello!'
+    }
+}
+
+// Register the file writing task.
+def greetingFile = objects.fileProperty()
+greetingFile = layout.buildDirectory.file('hello.txt')
+// The second argument is either a class ref / Lamda.
+tasks.register('greet', GreetingToFileTask) {
+    destination = greetingFile
+}
+
+// Register the file reading task.
+tasks.register('sayGreeting') {
+    dependsOn greet
+    doLast {
+        def file = greetingFile.get().asFile
+        println "${file.text} (file: ${file.name})"
+    }
+}
+
+gradlePlugin {
+    plugins {
+        greetingsPlugin {
+            id = 'org.samples.greeting'
+            implementationClass = 'org.example.greeting.GreetingPlugin'
+        }
+    }
+}
